@@ -6,10 +6,13 @@ import org.apache.jena.query.Query;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QueryFactory;
+import org.apache.jena.query.QueryParseException;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
+import org.apache.jena.query.ResultSetFormatter;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.riot.RDFDataMgr;
+import org.apache.jena.sparql.engine.http.QueryEngineHTTP;
 
 public class AppWindow extends javax.swing.JFrame {
 
@@ -243,16 +246,49 @@ public class AppWindow extends javax.swing.JFrame {
     }
     
     private void doQuery() {
-        Model data = RDFDataMgr.loadModel(outputPathField.getText());
-        Query query = QueryFactory.create(inputArea.getText());
-        QueryExecution queryExec = QueryExecutionFactory.create(query, data);
-        ResultSet result = queryExec.execSelect();
+        Model data = null;
+        boolean isLocalRDF = localRadioButton.isSelected();        
+        String output = "";
         
-        while(result.hasNext()) {
-            QuerySolution row = result.nextSolution();
-            
+        if(isLocalRDF) {
+            try {
+                data = RDFDataMgr.loadModel(outputPathField.getText());
+            } catch (Exception e) {
+                output = "Error loading the local file to a model: " 
+                        + e.getMessage();
+                printResult(output);
+                return;
+            }
         }
-        queryExec.close();
+        
+        try {
+            Query query = QueryFactory.create(inputArea.getText());
+            QueryExecution queryExec;
+            
+            if(isLocalRDF) {
+                queryExec = QueryExecutionFactory.create(query, data);
+            } else {
+                queryExec = QueryExecutionFactory
+                        .sparqlService(outputPathField.getText(), query);
+                ((QueryEngineHTTP)queryExec).addParam("timeout", "5000");
+            }
+            
+            ResultSet result = queryExec.execSelect();
+
+            output = ResultSetFormatter.asText(result);
+
+            queryExec.close();
+        } catch(QueryParseException e) {
+            output = "Syntax error: " + e.getMessage() + "\n in line: " + e.getLine();
+        } catch(Exception e) {
+            output = "The endpoint provided is not reachable or available.";
+        } finally {
+            printResult(output);
+        }
+    }
+    
+    private void printResult(String result) {
+        outputArea.setText(result);
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
